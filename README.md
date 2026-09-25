@@ -24,7 +24,7 @@ docker compose exec orchestrator doctor
 docker compose exec orchestrator run --suite smoke
 ```
 
-Reports: Docker volume `orchestrator-data` → `/data/results/<run-id>/report.html`. Grafana: http://localhost:3000 (lab user/password from `.env.example`).
+Reports: Docker volume `orchestrator-data` → `/data/results/<run-id>/report.html`. Grafana: [http://localhost:3000](http://localhost:3000) (lab user/password from `.env.example`).
 
 The local lab is for **platform** validation. It is not a production benchmark (see resource limits in `.env.example`).
 
@@ -52,14 +52,20 @@ orchestrator recover <run-id>
 orchestrator scheduler
 ```
 
+
+
 ## Layout
 
-| Path | Role |
-|------|------|
-| `src/orchestrator/` | Platform core |
-| `examples/demo-project/` | Lab fixture overlay (Docker target) |
-| `test-definitions/` | Starting point for a new project overlay (copy it; do not commit customer suites here) |
-| `docker/` | Lab target, payment mock, Prometheus, Grafana |
+
+| Path                     | Role                                                                                   |
+| ------------------------ | -------------------------------------------------------------------------------------- |
+| `src/orchestrator/`      | Platform core                                                                          |
+| `examples/demo-project/` | Lab fixture overlay (Docker target)                                                    |
+| `test-definitions/`      | Starting point for a new project overlay (copy it; do not commit customer suites here) |
+| `docker/`                | Lab target, payment mock, Prometheus, Grafana                                          |
+
+
+
 
 ## Tests
 
@@ -68,9 +74,11 @@ python3 -m pip install -e ".[dev]"
 make test
 ```
 
+
+
 ## Documentation
 
-- [**Guía de uso (paso a paso)**](docs/user-guide.md)
+- **[Guía de uso (paso a paso)](docs/user-guide.md)**
 - [Architecture](docs/architecture.md)
 - [Configuration](docs/configuration.md)
 - [Local development](docs/local-development.md)
@@ -79,4 +87,4 @@ make test
 - [Recovery](docs/recovery.md)
 - [Security](docs/security.md)
 - [Reporting](docs/reporting.md)
-- [Implementation status](IMPLEMENTATION_STATUS.md)
+

@@ -1,0 +1,23 @@
+# Persist hot write paths on the host (outside Docker.raw).
+# Avoids SQLite / results / TSDB living inside the Docker Desktop VM disk,
+# which on external volumes often remounts read-only under load.
+#
+# Set ORCHESTRATOR_HOST_DATA in .env (default under this repo's ./data).
+# Used by: make ext-up / EXT_COMPOSE
+
+services:
+  orchestrator:
+    volumes:
+      - ${ORCHESTRATOR_HOST_DATA:-./data}/orchestrator:/data
+
+  prometheus:
+    volumes:
+      - ${ORCHESTRATOR_HOST_DATA:-./data}/prometheus:/prometheus
+
+  influxdb:
+    volumes:
+      - ${ORCHESTRATOR_HOST_DATA:-./data}/influxdb:/var/lib/influxdb2
+
+  grafana:
+    volumes:
+      - ${ORCHESTRATOR_HOST_DATA:-./data}/grafana:/var/lib/grafana

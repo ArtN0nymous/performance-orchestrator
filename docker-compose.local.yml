@@ -1,0 +1,13 @@
+services:
+  orchestrator:
+    environment:
+      ORCHESTRATOR_CONFIG: /project/orchestrator.yml
+    volumes:
+      - ./data:/data
+      - ./examples/demo-project:/project:ro
+  target-app:
+    cpus: ${TARGET_APP_CPUS:-1.0}
+    mem_limit: ${TARGET_APP_MEMORY:-1g}
+  target-db:
+    cpus: ${TARGET_DB_CPUS:-0.5}
+    mem_limit: ${TARGET_DB_MEMORY:-512m}

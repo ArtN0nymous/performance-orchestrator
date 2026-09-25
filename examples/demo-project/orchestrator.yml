@@ -1,0 +1,191 @@
+project:
+  name: demo-lab
+  timezone: America/Mexico_City
+
+environment:
+  name: local
+  timezone: America/Mexico_City
+
+target:
+  type: ssh_generic
+  ssh:
+    host: target-app
+    port: 22
+    user: perf
+    identity_file: /data/lab_ed25519
+    known_hosts_file: /data/known_hosts
+    strict_host_key_checking: "yes"
+    connect_timeout_seconds: 8
+  commands:
+    check_connection: "uname -a && id"
+    capture_state: "/usr/local/bin/maintenance.sh status"
+    enable_maintenance: "/usr/local/bin/maintenance.sh enable {ttl_seconds}"
+    disable_maintenance: "/usr/local/bin/maintenance.sh disable"
+    collect_diagnostics: "/usr/local/bin/maintenance.sh diagnostics"
+    logs: "dmesg | tail -n 20 || true"
+  traffic:
+    public_base_url: http://target-nginx:80
+    test_base_url: http://target-nginx:8088
+    bypass_header_name: X-Perf-Test-Traffic
+    bypass_header_value: lab
+    public_expect_status_when_maintenance: 503
+    test_expect_status_when_maintenance: 200
+    health_path: /health
+
+maintenance:
+  enabled: true
+  ttl_seconds: 1800
+  watchdog_enabled: true
+
+health:
+  timeout_seconds: 5
+  retries: 8
+
+monitoring:
+  enabled: true
+  prometheus_url: http://prometheus:9090
+  grafana_url: http://localhost:3000
+  cpu_query: 'fixture_up'
+  memory_query: 'fixture_up'
+  disk_query: 'fixture_up'
+  load_query: 'fixture_up'
+
+storage:
+  sqlite_path: /data/orchestrator.db
+  results_dir: /data/results
+  influx:
+    enabled: true
+    url: http://influxdb:8086
+    org: perf
+    bucket: k6
+    token: ${INFLUXDB_TOKEN:-lab-influx-token-not-for-production}
+
+safety:
+  max_vus: 50
+  max_test_duration: 15m
+  max_error_rate: 0.8
+  max_cpu: 500
+  abort_if_target_unreachable: true
+  abort_if_prometheus_unavailable: false
+  poll_interval_seconds: 2
+
+schedule:
+  timezone: America/Mexico_City
+  misfire_grace_seconds: 300
+  tick_seconds: 5
+  jobs:
+    - id: weekend-smoke
+      cron: "0 10 * * 6"
+      suite: weekend
+      misfire: skip
+      enabled: true
+
+k6_bin: k6
+k6_root: /project
+max_concurrent_runs: 1
+
+suites:
+  smoke:
+    tests: [smoke]
+    continue_on_failure: false
+  weekend:
+    tests: [smoke, baseline, load, stress, spike, endurance, resilience]
+    continue_on_failure: true
+  payments:
+    tests: [payment_success, payment_timeout, payment_error]
+    continue_on_failure: true
+
+tests:
+  smoke:
+    script: k6/scenarios/smoke.js
+    duration: 8s
+    continue_on_failure: false
+    params:
+      executor: constant-vus
+      vus: 1
+      duration: 8s
+    thresholds:
+      http_req_failed: "rate<0.2"
+      http_req_duration_p95: "p(95)<2000"
+  baseline:
+    script: k6/scenarios/baseline.js
+    duration: 10s
+    params:
+      executor: constant-vus
+      vus: 1
+      duration: 10s
+    thresholds:
+      http_req_failed: "rate<0.3"
+  load:
+    script: k6/scenarios/load.js
+    duration: 10s
+    params:
+      executor: constant-vus
+      vus: 2
+      duration: 10s
+  stress:
+    script: k6/scenarios/stress.js
+    duration: 8s
+    params:
+      executor: ramping-vus
+      vus: 3
+      duration: 8s
+      stages:
+        - duration: 3s
+          target: 3
+        - duration: 3s
+          target: 1
+  spike:
+    script: k6/scenarios/spike.js
+    duration: 8s
+    params:
+      executor: ramping-vus
+      vus: 4
+      stages:
+        - duration: 2s
+          target: 4
+        - duration: 4s
+          target: 1
+  endurance:
+    script: k6/scenarios/endurance.js
+    duration: 12s
+    params:
+      executor: constant-vus
+      vus: 1
+      duration: 12s
+  resilience:
+    script: k6/scenarios/resilience.js
+    duration: 10s
+    params:
+      executor: per-vu-iterations
+      vus: 1
+      iterations: 1
+    env:
+      PAYMENT_SCENARIO: success
+  payment_success:
+    script: k6/scenarios/resilience.js
+    duration: 8s
+    params:
+      executor: per-vu-iterations
+      vus: 1
+      iterations: 1
+    env:
+      PAYMENT_SCENARIO: success
+  payment_timeout:
+    script: k6/scenarios/resilience.js
+    duration: 15s
+    params:
+      executor: per-vu-iterations
+      vus: 1
+      iterations: 1
+    env:
+      PAYMENT_SCENARIO: timeout
+  payment_error:
+    script: k6/scenarios/resilience.js
+    duration: 8s
+    params:
+      executor: per-vu-iterations
+      vus: 1
+      iterations: 1
+    env:
+      PAYMENT_SCENARIO: error

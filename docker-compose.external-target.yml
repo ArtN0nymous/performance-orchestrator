@@ -1,0 +1,97 @@
+# Connect the orchestrator to an external API stack on a shared Docker network
+# (simulates a remote server: SSH + HTTP). All hosts/keys come from .env — no
+# customer brand in this file.
+#
+# With observability profile: Prometheus + cAdvisor feed CPU/RAM into the HTML report.
+#
+#   make ext-up
+#
+# Do not enable profile local-target when using an external API as the target.
+
+services:
+  orchestrator:
+    environment:
+      ORCHESTRATOR_CONFIG: /project/orchestrator.yml
+      TARGET_SSH_HOST: ${TARGET_SSH_HOST}
+      TARGET_SSH_PORT: ${TARGET_SSH_PORT:-22}
+      TARGET_SSH_USER: ${TARGET_SSH_USER:-root}
+      TARGET_SSH_IDENTITY: ${TARGET_SSH_IDENTITY:-/data/lab_ed25519}
+      TARGET_KNOWN_HOSTS: ${TARGET_KNOWN_HOSTS:-/data/known_hosts}
+      TARGET_REMOTE_WORKDIR: ${TARGET_REMOTE_WORKDIR:-/var/www}
+      KNOWN_HOSTS_FILE: ${KNOWN_HOSTS_FILE:-/data/known_hosts}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+      TEST_BASE_URL: ${TEST_BASE_URL}
+      HEALTH_PATH: ${HEALTH_PATH:-/api/health}
+      ACCESS_TOKEN_HEADER: ${ACCESS_TOKEN_HEADER:-X-Access-Token}
+      USER_TYPE_HEADER: ${USER_TYPE_HEADER:-}
+      AUTH_PROBE_PATH: ${AUTH_PROBE_PATH:-/api/user/preferences}
+      PUBLIC_READ_PATHS: ${PUBLIC_READ_PATHS:-/api/events,/api/banners,/api/badge-price,/api/visitor-registration-paywall}
+      API_ACCESS_KEY: ${API_ACCESS_KEY:-}
+      API_ADMIN_ACCESS_KEY: ${API_ADMIN_ACCESS_KEY:-}
+      STUB_ACCESS_TOKEN: ${STUB_ACCESS_TOKEN:-stub-token-loadtest}
+      STRIPE_PM_ID: ${STRIPE_PM_ID:-pm_card_visa}
+      STRIPE_TEST_MODE_CONFIRMED: ${STRIPE_TEST_MODE_CONFIRMED:-yes}
+      ENABLE_STRIPE_WEBHOOK: ${ENABLE_STRIPE_WEBHOOK:-0}
+      VU_BASELINE: ${VU_BASELINE:-10}
+      VU_LOAD: ${VU_LOAD:-65}
+      VU_STRESS: ${VU_STRESS:-160}
+      VU_SPIKE: ${VU_SPIKE:-200}
+      VU_ENDURANCE: ${VU_ENDURANCE:-65}
+      BASELINE_DURATION: ${BASELINE_DURATION:-12m}
+      LOAD_DURATION: ${LOAD_DURATION:-35m}
+      STRESS_DURATION: ${STRESS_DURATION:-20m}
+      STRESS_RAMP: ${STRESS_RAMP:-5m}
+      STRESS_HOLD_MID: ${STRESS_HOLD_MID:-5m}
+      STRESS_HOLD_HIGH: ${STRESS_HOLD_HIGH:-5m}
+      STRESS_RAMP_DOWN: ${STRESS_RAMP_DOWN:-5m}
+      SPIKE_DURATION: ${SPIKE_DURATION:-5m}
+      SPIKE_UP: ${SPIKE_UP:-1m}
+      SPIKE_HOLD: ${SPIKE_HOLD:-3m}
+      SPIKE_DOWN: ${SPIKE_DOWN:-1m}
+      ENDURANCE_DURATION: ${ENDURANCE_DURATION:-45m}
+      SCHEDULE_CAPACITY_ENABLED: ${SCHEDULE_CAPACITY_ENABLED:-true}
+      SCHEDULE_CAPACITY_CRON: ${SCHEDULE_CAPACITY_CRON:-0 19 * * 5}
+      SCHEDULE_CAPACITY_SUITE: ${SCHEDULE_CAPACITY_SUITE:-full}
+      PROJECT_TIMEZONE: ${PROJECT_TIMEZONE:-America/Mexico_City}
+      TZ: ${TZ:-America/Mexico_City}
+      MONITORING_ENABLED: ${MONITORING_ENABLED:-true}
+      PROMETHEUS_URL: ${PROMETHEUS_URL:-http://prometheus:9090}
+      GRAFANA_URL: ${GRAFANA_URL:-http://localhost:3000}
+      PROM_CPU_QUERY: ${PROM_CPU_QUERY}
+      PROM_MEMORY_QUERY: ${PROM_MEMORY_QUERY}
+      DB_SNAPSHOT_ENABLED: ${DB_SNAPSHOT_ENABLED:-false}
+      DB_SNAPSHOT_DISABLE_SSL: ${DB_SNAPSHOT_DISABLE_SSL:-true}
+      DB_SNAPSHOT_MYSQL_OPTS: ${DB_SNAPSHOT_MYSQL_OPTS:-}
+    networks:
+      - default
+      - external-target
+
+  prometheus:
+    profiles: ["observability"]
+    networks:
+      - default
+
+  cadvisor:
+    profiles: ["observability"]
+    networks:
+      - default
+
+  docker-stats-exporter:
+    profiles: ["observability"]
+    networks:
+      - default
+
+  grafana:
+    profiles: ["observability"]
+    networks:
+      - default
+
+  influxdb:
+    profiles: ["observability"]
+    networks:
+      - default
+
+networks:
+  external-target:
+    external: true
+    name: ${EXTERNAL_TARGET_NETWORK:-perf-loadtest}

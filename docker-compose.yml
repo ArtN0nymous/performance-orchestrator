@@ -1,0 +1,215 @@
+name: performance-orchestrator
+
+services:
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        K6_VERSION: v2.2.0
+        XK6_VERSION: v1.1.5
+        XK6_INFLUXDB_VERSION: v0.7.0
+        PYTHON_VERSION: 3.12.8
+        GOLANG_VERSION: 1.25.1
+    image: performance-orchestrator:1.0.0
+    hostname: orchestrator
+    environment:
+      ORCHESTRATOR_CONFIG: /project/orchestrator.yml
+      TARGET_SSH_HOST: ${TARGET_SSH_HOST:-target-app}
+      TARGET_SSH_PORT: ${TARGET_SSH_PORT:-22}
+      KNOWN_HOSTS_FILE: /data/known_hosts
+      TZ: ${TZ:-UTC}
+      K6_INFLUXDB_ORGANIZATION: ${INFLUXDB_ORG:-perf}
+      K6_INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-k6}
+      K6_INFLUXDB_TOKEN: ${INFLUXDB_TOKEN:-lab-influx-token-not-for-production}
+    volumes:
+      - orchestrator-data:/data
+      - ${ORCHESTRATOR_PROJECT_DIR:-./examples/demo-project}:/project:ro
+      - ./docker/target/ssh/lab_ed25519:/keys/lab_ed25519:ro
+    depends_on: []
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "orchestrator", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  prometheus:
+    profiles: ["observability"]
+    image: prom/prometheus:v2.55.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  influxdb:
+    profiles: ["observability"]
+    image: influxdb:2.7.11
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUXDB_USERNAME:-admin}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_PASSWORD:-adminadmin}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG:-perf}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET:-k6}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN:-lab-influx-token-not-for-production}
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    ports:
+      - "8086:8086"
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  grafana:
+    profiles: ["observability"]
+    image: grafana/grafana:11.4.0
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      INFLUXDB_ORG: ${INFLUXDB_ORG:-perf}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET:-k6}
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN:-lab-influx-token-not-for-production}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  cadvisor:
+    profiles: ["observability"]
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    privileged: true
+    # Useful on Linux hosts; on Docker Desktop Mac prefer docker-stats-exporter.
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=5s
+      - --store_container_labels=true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "8081:8080"
+
+  docker-stats-exporter:
+    profiles: ["observability"]
+    build:
+      context: ./docker/docker-stats-exporter
+    image: performance-orchestrator-docker-stats:1.0.0
+    environment:
+      LISTEN: 0.0.0.0:9101
+      SCRAPE_INTERVAL: "5"
+      # Empty = all containers; set e.g. figap_api to limit scrape cost
+      NAME_FILTER: ${DOCKER_STATS_NAME_FILTER:-figap_api}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "9101:9101"
+    restart: unless-stopped
+
+
+  target-db:
+    profiles: ["local-target"]
+    image: postgres:16.4
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-perf}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-perf}
+      POSTGRES_DB: ${POSTGRES_DB:-perf}
+    volumes:
+      - target-db-data:/var/lib/postgresql/data
+    cpus: ${TARGET_DB_CPUS:-0.5}
+    mem_limit: ${TARGET_DB_MEMORY:-512m}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-perf} -d ${POSTGRES_DB:-perf}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  target-app:
+    profiles: ["local-target"]
+    build:
+      context: .
+      dockerfile: docker/target/app/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-perf}:${POSTGRES_PASSWORD:-perf}@target-db:5432/${POSTGRES_DB:-perf}
+      PAYMENT_MOCK_URL: http://payment-mock:8090
+      MAINTENANCE_FLAG: /shared/maintenance/flag
+    volumes:
+      - maintenance-flag:/shared/maintenance
+    ports:
+      - "12222:22"
+    cpus: ${TARGET_APP_CPUS:-1.0}
+    mem_limit: ${TARGET_APP_MEMORY:-1g}
+    depends_on:
+      target-db:
+        condition: service_healthy
+      payment-mock:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  target-nginx:
+    profiles: ["local-target"]
+    build:
+      context: .
+      dockerfile: docker/target/nginx/Dockerfile
+    volumes:
+      - maintenance-flag:/shared/maintenance
+    ports:
+      - "18080:80"
+      - "18088:8088"
+    depends_on:
+      target-app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  payment-mock:
+    profiles: ["local-target"]
+    build:
+      context: .
+      dockerfile: docker/payment-mock/Dockerfile
+    ports:
+      - "8090:8090"
+
+  toxiproxy:
+    profiles: ["chaos"]
+    image: ghcr.io/shopify/toxiproxy:2.9.0
+    ports:
+      - "8474:8474"
+
+volumes:
+  orchestrator-data:
+  prometheus-data:
+  influxdb-data:
+  grafana-data:
+  target-db-data:
+  maintenance-flag:

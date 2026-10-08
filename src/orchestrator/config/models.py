@@ -67,6 +67,8 @@ class CommandSet(BaseModel):
     restore_database: str | None = None
     # Optional: print a single JSON object of table → row counts (before/after deltas).
     database_row_counts: str | None = None
+    # Optional: custom `doctor` check for the snapshot (replaces the built-in Laravel .env based probe).
+    probe_database: str | None = None
 
 
 class TargetConfig(BaseModel):
@@ -92,6 +94,8 @@ class DatabaseSnapshotConfig(BaseModel):
     """Orchestrator-controlled DB backup/restore + row-count deltas for the report."""
 
     enabled: bool = False
+    # When false, only the backup is taken/checked; restore is never run nor required (read-only DB user).
+    restore: bool = True
     # When true, mysql/mysqldump on the target get client SSL disabled (typical Docker / private net).
     disable_ssl: bool = True
     # Optional free-form client flags (overrides disable_ssl when non-empty), e.g. --ssl-mode=REQUIRED.

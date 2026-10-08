@@ -4,7 +4,7 @@ PROFILES ?= --profile local-target --profile observability
 EXT_COMPOSE ?= -f docker-compose.yml -f docker-compose.external-target.yml -f docker-compose.host-data.yml
 
 .PHONY: install test test-unit test-fail lab-up lab-down doctor smoke \
-	ext-net ext-up ext-down ext-doctor ext-smoke ext-commerce ext-full ext-weekend
+	remote-up remote-down remote-validate remote-doctor remote-smoke remote-full ext-net ext-up ext-down ext-doctor ext-smoke ext-commerce ext-full ext-weekend
 
 install:
 	$(PYTHON) -m pip install -e ".[dev]"
@@ -57,3 +57,24 @@ ext-full:
 
 ext-weekend:
 	$(COMPOSE) $(EXT_COMPOSE) exec orchestrator run --suite weekend
+
+# --- Remote target instance (own .env; compose project name from COMPOSE_PROJECT_NAME or -p) ---
+REMOTE_COMPOSE = $(COMPOSE) -f docker-compose.yml -f docker-compose.host-data.yml -f docker-compose.remote-target.yml
+
+remote-up:
+	$(REMOTE_COMPOSE) up -d --build orchestrator
+
+remote-down:
+	$(REMOTE_COMPOSE) stop orchestrator
+
+remote-validate:
+	$(REMOTE_COMPOSE) exec orchestrator orchestrator validate
+
+remote-doctor:
+	$(REMOTE_COMPOSE) exec orchestrator doctor
+
+remote-smoke:
+	$(REMOTE_COMPOSE) exec orchestrator run --suite smoke
+
+remote-full:
+	$(REMOTE_COMPOSE) exec orchestrator run --suite full

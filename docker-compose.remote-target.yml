@@ -1,0 +1,19 @@
+# Overlay for a remote target (SSH + HTTPS over the internet) with its own .env.
+# Unlike docker-compose.external-target.yml it needs no shared Docker network
+# and forwards EVERY variable of the instance .env to the container.
+#
+#   docker compose -p performance-orchestrator-crm \
+#     -f docker-compose.yml -f docker-compose.host-data.yml -f docker-compose.remote-target.yml \
+#     up -d --build orchestrator
+#
+# Do not enable the observability profile here; point PROMETHEUS_URL at an
+# existing Prometheus (e.g. http://host.docker.internal:9090).
+
+services:
+  orchestrator:
+    env_file:
+      - ${ORCHESTRATOR_ENV_FILE:-.env}
+    environment:
+      ORCHESTRATOR_CONFIG: /project/orchestrator.yml
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

@@ -32,3 +32,15 @@ def test_duration_exceeded():
 def test_target_unreachable():
     d = SafetyController(_cfg(abort_if_target_unreachable=True)).evaluate_metrics(target_reachable=False)
     assert d.abort
+
+
+def test_rejects_stage_target_above_max_vus():
+    c = SafetyController(_cfg())
+    t = K6Test(id="x", script="s.js", params=ScenarioParams(stages=[{"duration": "1m", "target": "50"}]))
+    with pytest.raises(SafetyViolation):
+        c.validate_test(t)
+
+
+def test_stage_target_within_max_vus_ok():
+    c = SafetyController(_cfg())
+    c.validate_test(K6Test(id="x", script="s.js", params=ScenarioParams(stages=[{"duration": "1m", "target": 10}])))

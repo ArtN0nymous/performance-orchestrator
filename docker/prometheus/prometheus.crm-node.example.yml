@@ -1,0 +1,12 @@
+# OPTIONAL: scrape job for the CRM host's node_exporter. Paste this job under
+# scrape_configs of the existing Prometheus (do not remove existing jobs), then reload:
+#   curl -X POST http://localhost:9090/-/reload   (needs --web.enable-lifecycle)
+#
+# Suggested orchestrator queries (set in the CRM instance .env):
+#   PROM_CPU_QUERY=100 - (avg(rate(node_cpu_seconds_total{mode="idle",instance="CRM_HOST:9100"}[1m])) * 100)
+#   PROM_MEMORY_QUERY=(1 - node_memory_MemAvailable_bytes{instance="CRM_HOST:9100"} / node_memory_MemTotal_bytes{instance="CRM_HOST:9100"}) * 100
+#
+#  - job_name: crm-node
+#    scrape_interval: 10s
+#    static_configs:
+#      - targets: ["CRM_HOST:9100"]

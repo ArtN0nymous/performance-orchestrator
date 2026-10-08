@@ -143,6 +143,8 @@ class GenericSshAdapter(TargetAdapter):
             return LifecycleResult(False, str(exc), {"stderr": exc.stderr})
 
     def restore_database(self) -> LifecycleResult:
+        if not self.cfg.database_snapshot.restore:
+            return LifecycleResult(True, "restore_database disabled (database_snapshot.restore=false)")
         tmpl = self.commands.restore_database
         if not tmpl or not str(tmpl).strip():
             return LifecycleResult(True, "restore_database skipped")
@@ -169,8 +171,17 @@ class GenericSshAdapter(TargetAdapter):
             return LifecycleResult(True, "disabled")
         if not self.commands.backup_database or not str(self.commands.backup_database).strip():
             return LifecycleResult(False, "enabled but backup_database command is not configured")
-        if not self.commands.restore_database or not str(self.commands.restore_database).strip():
+        if self.cfg.database_snapshot.restore and not (
+            self.commands.restore_database and str(self.commands.restore_database).strip()
+        ):
             return LifecycleResult(False, "enabled but restore_database command is not configured")
+        custom = getattr(self.commands, "probe_database", None)
+        if custom and str(custom).strip():
+            try:
+                result = self.ssh.run(self._render(custom))
+                return LifecycleResult(True, (result.stdout or "").strip() or "db_snapshot_ok")
+            except SshError as exc:
+                return LifecycleResult(False, ((exc.stderr or exc.stdout or str(exc)).strip())[:300])
         workdir = self.cfg.target.remote_workdir or "."
         ssl_opts = self.cfg.database_snapshot.resolved_mysql_opts()
         # Shell uses $VAR (not ${VAR}) for remote DB_* from the API .env.

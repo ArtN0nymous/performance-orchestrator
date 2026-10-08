@@ -22,8 +22,18 @@ class SafetyController:
     def __init__(self, cfg: OrchestratorConfig):
         self.cfg = cfg
 
+    @staticmethod
+    def _max_stage_target(test: K6Test) -> int:
+        peak = 0
+        for stage in test.params.stages or []:
+            try:
+                peak = max(peak, int(float(stage.get("target", 0))))
+            except (TypeError, ValueError):
+                continue
+        return peak
+
     def validate_test(self, test: K6Test) -> None:
-        vus = test.params.vus or test.params.max_vus or 0
+        vus = max(test.params.vus or test.params.max_vus or 0, self._max_stage_target(test))
         if vus > self.cfg.safety.max_vus:
             raise SafetyViolation(f"test {test.id} vus={vus} exceeds safety.max_vus={self.cfg.safety.max_vus}")
         duration = test.duration or test.params.duration

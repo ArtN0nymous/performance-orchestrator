@@ -11,7 +11,7 @@ services:
         XK6_INFLUXDB_VERSION: v0.7.0
         PYTHON_VERSION: 3.12.8
         GOLANG_VERSION: 1.25.1
-    image: performance-orchestrator:1.0.0
+    image: performance-orchestrator:${ORCHESTRATOR_IMAGE_TAG:-1.0.0}
     hostname: orchestrator
     environment:
       ORCHESTRATOR_CONFIG: /project/orchestrator.yml

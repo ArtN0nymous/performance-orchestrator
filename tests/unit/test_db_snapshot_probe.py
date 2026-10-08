@@ -100,3 +100,26 @@ def test_resolved_mysql_opts_override_and_ssl_on():
         DatabaseSnapshotConfig(disable_ssl=True, mysql_opts="--ssl-mode=REQUIRED").resolved_mysql_opts()
         == "--ssl-mode=REQUIRED"
     )
+
+
+def test_probe_without_restore_uses_custom_probe_and_skips_restore():
+    adapter = GenericSshAdapter.__new__(GenericSshAdapter)
+    adapter.cfg = _Cfg(snapshot=DatabaseSnapshotConfig(enabled=True, restore=False))
+    adapter.commands = type(
+        "C", (), {"backup_database": "echo b", "restore_database": None, "probe_database": "echo probe_ok"}
+    )()
+    captured: list[str] = []
+    adapter.ssh = _FakeSsh(capture=captured)
+    assert GenericSshAdapter.probe_database_snapshot(adapter).ok
+    assert captured == ["echo probe_ok"]
+    restored = GenericSshAdapter.restore_database(adapter)
+    assert restored.ok and "disabled" in restored.detail
+    assert captured == ["echo probe_ok"]
+
+
+def test_probe_requires_restore_command_by_default():
+    adapter = GenericSshAdapter.__new__(GenericSshAdapter)
+    adapter.cfg = _Cfg()
+    adapter.commands = type("C", (), {"backup_database": "echo b", "restore_database": None})()
+    adapter.ssh = _FakeSsh()
+    assert not GenericSshAdapter.probe_database_snapshot(adapter).ok
